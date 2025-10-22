@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Traffic Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .dashboard-grid {
+            background-color: #0d1117;
+            padding: 1.5rem;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .panel {
+            background-color: #161b22;
+            border-radius: 1.5rem;
+            padding: 2rem;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            color: #c9d1d9;
+            max-width: 900px;
+            width: 90%;
+            height: auto;
+            min-height: 50vh;
+            text-align: center;
+        }
+
+        .clock-panel {
+            background-color: #0d1117;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-top: 2rem;
+            padding: 1rem;
+            background-color: #0d1117;
+            border-radius: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .panel {
+                padding: 1.5rem;
+                min-height: 80vh;
+            }
+            .chart-container {
+                height: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-grid">
+    
+    <button id="fullscreen-button" 
+            onclick="toggleFullscreen()"
+            class="absolute top-4 right-4 z-20 p-3 bg-gray-700 hover:bg-blue-600 text-white rounded-full shadow-lg transition-colors duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+            title="Toggle Fullscreen">
+        <svg id="fullscreen-icon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m7-5h4m0 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5"></path></svg>
+    </button>
+
+    <!-- CLOCK SCREEN (shown outside active hours) -->
+    <div id="clock-screen" class="clock-panel" style="display: none;">
+        <div class="text-8xl md:text-9xl font-light text-gray-600 mb-4" id="current-time">--:--</div>
+        <div class="text-2xl md:text-3xl font-light text-gray-500" id="current-date">Loading...</div>
+        <div class="text-lg text-gray-600 mt-8">Dashboard active 4:00 PM - 7:00 PM</div>
+    </div>
+
+    <!-- COMMUTE TRAFFIC STATUS PANEL (shown 3PM-7PM) -->
+    <div id="commute-panel" class="panel" style="display: none;">
+        <h2 class="text-3xl sm:text-4xl font-light mb-6 text-blue-400">
+            Commute: Alameda to Pleasant Hill
+        </h2>
+        
+        <div class="flex flex-col items-center justify-center">
+            <p class="text-xl sm:text-2xl font-light mb-3 text-gray-400">Estimated Travel Time:</p>
+            
+            <div id="commute-time" class="text-7xl md:text-8xl lg:text-9xl font-extrabold text-green-400 mb-6 leading-none">Loading...</div>
+            
+            <div id="commute-status" class="text-xl sm:text-2xl font-medium px-6 py-3 rounded-full"></div>
+        </div>
+        
+        <!-- Traffic History Chart -->
+        <div class="chart-container">
+            <canvas id="trafficChart"></canvas>
+        </div>
+        
+        <p class="text-sm mt-6 text-gray-500">Real-time update via Google Maps API • Updates every 5 min</p>
+    </div>
+
+</div>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD1m3mrVsVvnftAdf9gmj52s3cy6r07TRc&libraries=geometry"></script>
+
+<script>
+    const ORIGIN = '1900 Skyhawk St, Alameda, CA';
+    const DESTINATION = '215 Devonshire Ct, Pleasant Hill, CA';
+    
+    const COMMUTE_TIME = document.getElementById('commute-time');
+    const COMMUTE_STATUS = document.getElementById('commute-status');
+    const COMMUTE_PANEL = document.getElementById('commute-panel');
+    const CLOCK_SCREEN = document.getElementById('clock-screen');
+    const CURRENT_TIME = document.getElementById('current-time');
+    const CURRENT_DATE = document.getElementById('current-date');
+    const FULLSCREEN_BUTTON = document.getElementById('fullscreen-button');
+    const FULLSCREEN_ICON = document.getElementById('fullscreen-icon');
+
+    let distanceMatrixService;
+    let trafficChart;
+
+    function isActiveHours() {
+        const now = new Date();
+        const hour = now.getHours();
+        return hour >= 16 && hour < 19; // 4:00 PM (16) to 6:59 PM (18)
+    }
+
+    function updateClock() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+        });
+        const dateString = now.toLocaleDateString('en-US', { 
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+        
+        CURRENT_TIME.textContent = timeString;
+        CURRENT_DATE.textContent = dateString;
+    }
+
+    function updateDisplay() {
+        if (isActiveHours()) {
+            CLOCK_SCREEN.style.display = 'none';
+            COMMUTE_PANEL.style.display = 'flex';
+        } else {
+            CLOCK_SCREEN.style.display = 'flex';
+            COMMUTE_PANEL.style.display = 'none';
+            updateClock();
+        }
+    }
+
+    function generateTimeLabels() {
+        // Generate labels for every minute from 4:00 PM to 7:00 PM
+        const labels = [];
+        for (let hour = 16; hour <= 19; hour++) {
+            for (let minute = 0; minute < 60; minute++) {
+                if (hour === 19 && minute > 0) break; // Stop at 7:00 PM
+                const displayHour = hour > 12 ? hour - 12 : hour;
+                const period = 'PM';
+                const timeStr = `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`;
+                labels.push(timeStr);
+            }
+        }
+        return labels;
+    }
+
+    function getTimeIndex(date) {
+        // Convert current time to index in our fixed time axis (minute precision)
+        const hour = date.getHours();
+        const minute = date.getMinutes();
+        
+        if (hour < 16 || hour >= 19) return -1;
+        
+        // Calculate the exact minute index
+        const totalMinutes = (hour - 16) * 60 + minute;
+        return totalMinutes;
+    }
+
+    function initChart() {
+        const ctx = document.getElementById('trafficChart').getContext('2d');
+        const timeLabels = generateTimeLabels();
+        
+        trafficChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Travel Time (min)',
+                    data: new Array(timeLabels.length).fill(null),
+                    borderColor: '#60a5fa',
+                    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#60a5fa',
+                    pointBorderColor: '#1e3a8a',
+                    pointBorderWidth: 2,
+                    spanGaps: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: '#161b22',
+                        titleColor: '#c9d1d9',
+                        bodyColor: '#c9d1d9',
+                        borderColor: '#30363d',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: function(context) {
+                                if (context.parsed.y === null) return 'No data';
+                                const minutes = context.parsed.y;
+                                if (minutes >= 60) {
+                                    const hours = Math.floor(minutes / 60);
+                                    const mins = minutes % 60;
+                                    if (mins === 0) {
+                                        return `${hours}h`;
+                                    }
+                                    return `${hours}h ${mins}m`;
+                                }
+                                return minutes + ' minutes';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 28,
+                        max: 80,
+                        grid: {
+                            color: '#30363d',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#8b949e',
+                            font: {
+                                size: 11
+                            },
+                            stepSize: 10,
+                            callback: function(value) {
+                                return value + ' min';
+                            }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#8b949e',
+                            font: {
+                                size: 10
+                            },
+                            maxRotation: 0,
+                            autoSkip: false,
+                            callback: function(value, index) {
+                                const label = this.getLabelForValue(value);
+                                // Show only :00 and :30 labels
+                                if (label && (label.includes(':00 PM') || label.includes(':30 PM'))) {
+                                    return label;
+                                }
+                                return '';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateChart(minutes) {
+        const now = new Date();
+        const index = getTimeIndex(now);
+        
+        if (index >= 0 && index < trafficChart.data.datasets[0].data.length) {
+            trafficChart.data.datasets[0].data[index] = minutes;
+            trafficChart.update('none');
+        }
+    }
+
+    function formatTime(minutes) {
+        if (minutes >= 60) {
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            if (mins === 0) {
+                return `${hours}h`;
+            }
+            return `${hours}h ${mins}m`;
+        }
+        return `${minutes} min`;
+    }
+
+    function updateUI(totalTimeMinutes, status) {
+        let statusText;
+        let statusColor;
+        let statusBgClass;
+        let timeClasses = 'text-7xl md:text-8xl lg:text-9xl font-extrabold mb-6 leading-none';
+        
+        COMMUTE_STATUS.classList.remove('bg-red-600/30', 'text-red-400', 'bg-yellow-600/30', 'text-yellow-400', 'bg-green-600/30', 'text-green-400', 'border-current');
+
+        if (status === 'OK') {
+            if (totalTimeMinutes > 45) {
+                statusText = 'Significant Delay: Heavy Traffic';
+                statusColor = 'text-red-400';
+                statusBgClass = 'bg-red-600/30';
+            } else if (totalTimeMinutes > 35) {
+                statusText = 'Moderate Delays on Route';
+                statusColor = 'text-yellow-400';
+                statusBgClass = 'bg-yellow-600/30';
+            } else {
+                statusText = 'No Major Traffic Delays';
+                statusColor = 'text-green-400';
+                statusBgClass = 'bg-green-600/30';
+            }
+            
+            COMMUTE_TIME.textContent = formatTime(totalTimeMinutes);
+            COMMUTE_TIME.className = `${timeClasses} ${statusColor}`;
+
+            COMMUTE_STATUS.textContent = statusText;
+            COMMUTE_STATUS.className = `text-xl sm:text-2xl font-medium px-6 py-3 rounded-full ${statusBgClass} border border-transparent`;
+
+            if (totalTimeMinutes > 35) {
+                COMMUTE_STATUS.classList.add('border-current', statusColor);
+            }
+
+            updateChart(totalTimeMinutes);
+        } else {
+            COMMUTE_TIME.textContent = 'ERROR';
+            COMMUTE_TIME.className = `${timeClasses} text-red-600`;
+            COMMUTE_STATUS.textContent = `API Status: ${status}. Check key/route.`;
+            COMMUTE_STATUS.className = 'text-lg font-medium px-6 py-3 rounded-full bg-red-800/50 text-red-300';
+        }
+    }
+
+    function toggleFullscreen() {
+        const isFullscreen = document.fullscreenElement || 
+                             document.mozFullScreenElement || 
+                             document.webkitFullscreenElement || 
+                             document.msFullscreenElement;
+
+        const docElm = document.documentElement;
+
+        if (!isFullscreen) {
+            if (docElm.requestFullscreen) {
+                docElm.requestFullscreen();
+            } else if (docElm.mozRequestFullScreen) {
+                docElm.mozRequestFullScreen();
+            } else if (docElm.webkitRequestFullscreen) {
+                docElm.webkitRequestFullscreen();
+            } else if (docElm.msRequestFullscreen) {
+                docElm.msRequestFullscreen();
+            }
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    }
+
+    function updateButtonUI() {
+        const isFullscreen = document.fullscreenElement || 
+                             document.mozFullScreenElement || 
+                             document.webkitFullscreenElement || 
+                             document.msFullscreenElement;
+
+        if (FULLSCREEN_BUTTON && FULLSCREEN_ICON) {
+            if (isFullscreen) {
+                FULLSCREEN_BUTTON.classList.remove('bg-gray-700', 'hover:bg-blue-600');
+                FULLSCREEN_BUTTON.classList.add('bg-red-600', 'hover:bg-red-700');
+                FULLSCREEN_BUTTON.title = 'Exit Fullscreen (Press ESC)';
+                FULLSCREEN_ICON.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>`; 
+            } else {
+                FULLSCREEN_BUTTON.classList.remove('bg-red-600', 'hover:bg-red-700');
+                FULLSCREEN_BUTTON.classList.add('bg-gray-700', 'hover:bg-blue-600');
+                FULLSCREEN_BUTTON.title = 'Toggle Fullscreen';
+                FULLSCREEN_ICON.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m7-5h4m0 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m7 5h4m0 0v-4m0 4l-5-5"></path>`;
+            }
+        }
+    }
+
+    document.addEventListener('fullscreenchange', updateButtonUI);
+    document.addEventListener('mozfullscreenchange', updateButtonUI);
+    document.addEventListener('webkitfullscreenchange', updateButtonUI);
+    document.addEventListener('msfullscreenchange', updateButtonUI);
+
+    function fetchCommuteTime() {
+        if (!isActiveHours()) {
+            return;
+        }
+
+        if (!distanceMatrixService) {
+            COMMUTE_TIME.textContent = 'Initializing...';
+            return;
+        }
+        
+        const request = {
+            origins: [ORIGIN],
+            destinations: [DESTINATION],
+            travelMode: 'DRIVING',
+            unitSystem: google.maps.UnitSystem.IMPERIAL,
+            drivingOptions: {
+                departureTime: new Date(),
+                trafficModel: 'bestguess'
+            }
+        };
+
+        distanceMatrixService.getDistanceMatrix(request, (response, status) => {
+            if (status !== 'OK') {
+                console.error('Distance Matrix API Error:', status);
+                updateUI(0, status);
+                return;
+            }
+
+            try {
+                const element = response.rows[0].elements[0];
+                const elementStatus = element.status;
+
+                if (elementStatus !== 'OK') {
+                    updateUI(0, elementStatus);
+                    return;
+                }
+
+                const durationInSeconds = element.duration_in_traffic.value;
+                const durationInMinutes = Math.ceil(durationInSeconds / 60);
+
+                updateUI(durationInMinutes, 'OK');
+
+            } catch (e) {
+                console.error('Error processing API response:', e);
+                updateUI(0, 'RESPONSE_PARSE_ERROR');
+            }
+        });
+    }
+
+    function initMapService() {
+        distanceMatrixService = new google.maps.DistanceMatrixService();
+        console.log('Google Maps Distance Matrix Service initialized.');
+        
+        if (isActiveHours()) {
+            fetchCommuteTime();
+        }
+
+        setInterval(() => {
+            if (isActiveHours()) {
+                fetchCommuteTime();
+            }
+        }, 300000); // Update every 5 minutes (300,000 milliseconds)
+    }
+
+    function initDashboard() {
+        if (typeof google === 'object' && typeof google.maps === 'object') {
+            initMapService();
+        } else {
+            COMMUTE_TIME.textContent = 'API Failed';
+            COMMUTE_STATUS.textContent = 'Check API Key & console for errors.';
+            console.error('Google Maps API object not found. Ensure API key is valid.');
+        }
+        
+        initChart();
+        updateDisplay();
+        updateButtonUI();
+
+        // Update display every minute to check if we should switch views
+        setInterval(updateDisplay, 60000);
+        
+        // Update clock every second when showing clock screen
+        setInterval(() => {
+            if (!isActiveHours()) {
+                updateClock();
+            }
+        }, 1000);
+    }
+
+    window.onload = initDashboard;
+</script>
+
+</body>
+</html>
