@@ -87,10 +87,10 @@
     <div id="clock-screen" class="clock-panel" style="display: none;">
         <div class="text-8xl md:text-9xl font-light text-gray-600 mb-4" id="current-time">--:--</div>
         <div class="text-2xl md:text-3xl font-light text-gray-500" id="current-date">Loading...</div>
-        <div class="text-lg text-gray-600 mt-8">Dashboard active 4:00 PM - 7:00 PM</div>
+        <div class="text-lg text-gray-600 mt-8">Dashboard active 2:00 PM - 7:00 PM</div>
     </div>
 
-    <!-- COMMUTE TRAFFIC STATUS PANEL (shown 3PM-7PM) -->
+    <!-- COMMUTE TRAFFIC STATUS PANEL (shown 2:00 PM - 7:00 PM) -->
     <div id="commute-panel" class="panel" style="display: none;">
         <h2 class="text-3xl sm:text-4xl font-light mb-6 text-blue-400">
             Commute: Alameda to Pleasant Hill
@@ -135,7 +135,7 @@
     function isActiveHours() {
         const now = new Date();
         const hour = now.getHours();
-        return hour >= 14 && hour < 19; // 4:00 PM (16) to 6:59 PM (18)
+        return hour >= 14 && hour < 19; // 2:00 PM (14) to 6:59 PM (18)
     }
 
     function updateClock() {
@@ -168,7 +168,7 @@
     }
 
     function generateTimeLabels() {
-        // Generate labels for every minute from 4:00 PM to 7:00 PM
+        // Generate labels for every minute from 2:00 PM to 7:00 PM
         const labels = [];
         for (let hour = 14; hour <= 19; hour++) {
             for (let minute = 0; minute < 60; minute++) {
