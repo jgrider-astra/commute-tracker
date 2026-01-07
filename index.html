@@ -170,7 +170,7 @@
     function generateTimeLabels() {
         // Generate labels for every minute from 4:00 PM to 7:00 PM
         const labels = [];
-        for (let hour = 16; hour <= 19; hour++) {
+        for (let hour = 14; hour <= 19; hour++) {
             for (let minute = 0; minute < 60; minute++) {
                 if (hour === 19 && minute > 0) break; // Stop at 7:00 PM
                 const displayHour = hour > 12 ? hour - 12 : hour;
@@ -190,7 +190,7 @@
         if (hour < 14 || hour >= 19) return -1;
         
         // Calculate the exact minute index
-        const totalMinutes = (hour - 16) * 60 + minute;
+        const totalMinutes = (hour - 14) * 60 + minute;
         return totalMinutes;
     }
 
