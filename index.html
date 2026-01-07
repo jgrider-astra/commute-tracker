@@ -187,7 +187,7 @@
         const hour = date.getHours();
         const minute = date.getMinutes();
         
-        if (hour < 16 || hour >= 19) return -1;
+        if (hour < 14 || hour >= 19) return -1;
         
         // Calculate the exact minute index
         const totalMinutes = (hour - 16) * 60 + minute;
