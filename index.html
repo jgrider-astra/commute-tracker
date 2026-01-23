@@ -115,20 +115,20 @@
             <canvas id="trafficChart"></canvas>
         </div>
         
-        <p class="text-sm mt-6 text-gray-500">Estimated time via OpenRouteService • Updates every 5 min</p>
+        <p class="text-sm mt-6 text-gray-500">Live traffic via TomTom • Updates every 5 min</p>
     </div>
 
 </div>
 
 <script>
-    // OpenRouteService API Key - Get yours free at https://openrouteservice.org/dev/#/signup
-    const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjY4NmVmM2EyNjRiZTRkMzg4MmY2YTk2YTYxYzU5MGNmIiwiaCI6Im11cm11cjY0In0=';
+    // TomTom API Key - Get yours free at https://developer.tomtom.com/
+    const TOMTOM_API_KEY = 'vcxyAt5TejyIhUIB5BAB1O8MoMewe98M';
 
-    // Coordinates [longitude, latitude] - OpenRouteService requires coordinates, not addresses
+    // Coordinates as "latitude,longitude" strings - TomTom format
     // Origin: 1900 Skyhawk St, Alameda, CA (Alameda Point)
-    const ORIGIN_COORDS = [-122.3092, 37.7867];
+    const ORIGIN_COORDS = '37.7867,-122.3092';
     // Destination: 215 Devonshire Ct, Pleasant Hill, CA
-    const DESTINATION_COORDS = [-122.0608, 37.9482];
+    const DESTINATION_COORDS = '37.9482,-122.0608';
     
     const COMMUTE_TIME = document.getElementById('commute-time');
     const COMMUTE_STATUS = document.getElementById('commute-status');
@@ -441,34 +441,25 @@
             return;
         }
 
-        if (ORS_API_KEY === 'YOUR_API_KEY_HERE') {
+        if (TOMTOM_API_KEY === 'YOUR_API_KEY_HERE') {
             COMMUTE_TIME.textContent = 'No API Key';
-            COMMUTE_STATUS.textContent = 'Add your OpenRouteService API key';
+            COMMUTE_STATUS.textContent = 'Add your TomTom API key';
             return;
         }
 
         try {
-            const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Authorization': ORS_API_KEY
-                },
-                body: JSON.stringify({
-                    coordinates: [ORIGIN_COORDS, DESTINATION_COORDS]
-                })
-            });
+            const url = `https://api.tomtom.com/routing/1/calculateRoute/${ORIGIN_COORDS}:${DESTINATION_COORDS}/json?key=${TOMTOM_API_KEY}&traffic=true&travelMode=car`;
+            const response = await fetch(url);
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                console.error('OpenRouteService API Error:', response.status, errorData);
+                console.error('TomTom API Error:', response.status, errorData);
                 updateUI(0, `HTTP_${response.status}`);
                 return;
             }
 
             const data = await response.json();
-            const durationInSeconds = data.routes[0].summary.duration;
+            const durationInSeconds = data.routes[0].summary.travelTimeInSeconds;
             const durationInMinutes = Math.ceil(durationInSeconds / 60);
 
             updateUI(durationInMinutes, 'OK');
@@ -480,7 +471,7 @@
     }
 
     function initRouteService() {
-        console.log('OpenRouteService initialized.');
+        console.log('TomTom Routing initialized.');
 
         if (isActiveHours()) {
             fetchCommuteTime();
